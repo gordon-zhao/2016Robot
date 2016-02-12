@@ -1,62 +1,130 @@
 package org.usfirst.frc.team5181.robot;
+
+import org.first.frc.team5181.recoder.ActionBased;
+
+import sensors.LimitSwitch;
+import sensors.Potentiometer;
+import sensors.RevX;
+import actuators.LinearActuator;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
+import edu.wpi.first.wpilibj.Relay;
+import edu.wpi.first.wpilibj.Relay.Value;
 import edu.wpi.first.wpilibj.RobotDrive;
+import edu.wpi.first.wpilibj.SPI;
+import edu.wpi.first.wpilibj.SampleRobot;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.Victor;
+import edu.wpi.first.wpilibj.DigitalOutput;
 
-public class Robot extends IterativeRobot {
+public class Robot extends SampleRobot {
 	
-	private static double speedLimit = .7; //20% speed
+	//Speed Limit vars
+	private static double speedLimit = .6; 
 	
-	Victor leftFront;
-	Victor leftBack;
-	Victor rightFront;
-	Victor rightBack;
-	RobotDrive drive;
-	Gamepad gp;
+	//General vars
+	ActionBased recorder;
+	DriverStation ds = DriverStation.getInstance();
+	Autonomous auton;
+	DriveTrain drive;
+	Relay light;
 	
-	public void robotInit() {
-		leftFront = new Victor(Statics.LEFTPortFront);
-		leftBack = new Victor(Statics.LEFTPortBack);
-		rightFront = new Victor(Statics.RIGHTPortFront);
-		rightBack = new Victor(Statics.RIGHTPortBack);
+	//Special
+	Bear koala;
+	
+	//Sensors
+	RevX revX;
+	
+	//Actuators
+	//LinearActuator linAct;
+	
+	//Recorder Vars
+	final long timeStep = 1; //in Milliseconds
+	boolean isRecording;
+	
+	//Sensors
+	Potentiometer potent;
+	LimitSwitch limitSwitch;
+
+	
+	public void robotInit(){ 
+		light = new Relay(0);
+		light.set(Relay.Value.kOn);
+		auton = new Autonomous(this);
+		recorder = new ActionBased(timeStep);
+		drive = new DriveTrain(speedLimit);
 		
-		drive = new RobotDrive(leftFront, leftBack, rightFront, rightBack);
+		//Sensors
+		revX = new RevX(SPI.Port.kMXP);
 		
-		gp = new Gamepad();
+		//Actuators
+		//linAct = new LinearActuator(4, 0, 0.5, 17.5, 24, -0.1); //24 inch
+		
+		koala = new Bear();
 	}
 	
-	public void autonomousPeriodic() {
-		
+	public void autonomous() {
+		auton.actionPlayback("/var/rcrdng/autonRecording4.rcrdng", timeStep);
+		while(this.isAutonomous()) {
+			auton.setAutonState(this.isAutonomous());
+		}
 	}
 	
-	public void teleopPeriodic() {
-		//Speed Limit Control
-		if(gp.getRawButton(Gamepad.RIGHT_Bumper)) {
-			speedLimit += .1;
+	public void operatorControl() {
+		while (isOperatorControl() && isEnabled()) {
+			recording();
+			teleopMaster(false);
 		}
-		else if(gp.getRawButton(Gamepad.B_Button)) {
-			speedLimit = 0;
-		}
-		else if(gp.getRawButton(Gamepad.LEFT_Bumper)){
-			speedLimit -= 0.1;
+	}
+	public void teleopMaster(boolean inAuton) {	
+		if (!inAuton) {
+			Gamepad.setNaturalState();
 		}
 		
-		//Tank Drive
-		double leftDrive = gp.getRawAxis(gp.LEFT_Trigger);
-		double rightDrive = gp.getRawAxis(gp.RIGHT_Trigger);
-		double dir = Math.abs(gp.getRawAxis(gp.RIGHT_Stick_X)) / gp.getRawAxis(Gamepad.RIGHT_Stick_X); //1 or -1
+		if (Gamepad.X_Button_State) {
+			
+		}
 		
-		if(Math.abs(leftDrive) >= speedLimit) {
-			leftDrive = speedLimit;
+		if(Gamepad.A_Button_State) {
+			double[] temp = revX.getDisplacement();
+			for(int i = 0; i < 2; i++) {
+				DriverStation.reportError(temp[i] + "\n", false);
+			}
 		}
-		if(Math.abs(rightDrive) >= speedLimit) {
-			rightDrive = speedLimit;
+		if(revX.hadCollision()) {
+			DriverStation.reportError("Collision\n", false);
+			koala.start();
 		}
-		drive.tankDrive(dir * leftDrive, dir *rightDrive);
+		
+		if(Gamepad.Y_Button_State) {
+			koala.start();
+		}
+		
+		drive.updateSpeedLimit(Gamepad.RIGHT_Bumper_State, Gamepad.LEFT_Bumper_State, Gamepad.B_Button_State);
+		drive.ArcadeDrive(Gamepad.RIGHT_Stick_X_State, Gamepad.RIGHT_Stick_Y_State);
 	}
 	
-	public void testPeriodic() {
+	
+	/**
+	 * Controls the starting and stopping of the recorder
+	 */
+	public void recording() {	
+		if(Gamepad.START_State && !isRecording) {
+			isRecording = true;
+			   
+			recorder.startRecording();
+			
+			DriverStation.reportError("Started\n", false); 	
+		}
 		
+		if(Gamepad.BACK_State && isRecording)  {
+			isRecording = false;
+			recorder.stopRecording();
+		}
+
+		if(Gamepad.LEFT_Stick_DOWN_State) {
+			recorder.incrementRecording();
+		}
 	}
 }
